@@ -1,0 +1,62 @@
+{
+  "_comment": "复制到 ~/.config/wechat-diary/config.json 后按实际情况改。这里【不能】放任何真实凭据: token 与 AI key 由 `node src/cli.js bind` 写进 ~/.config/wechat-diary/credentials.json (0600)。",
+
+  "vaultPath": "/home/YOUR_USER/obsidian_vault",
+
+  "settings": {
+    "_comment": "键名与 Obsidian 插件 data.json 的 settings 一一对应: 两边共用 main.js 的同一份语义, 改名就是制造契约漂移。",
+
+    "diaryFolder": "5.TDSQL",
+    "pathFormat": "YYYY/MM/YYYY-MM-DD",
+    "_pathFormat_note": "相对 diaryFolder, 不含 .md。渲染结果 = 5.TDSQL/2026/08/2026-08-31.md。英文字母是日期代码, 固定文件夹名要放方括号如 [assets]/YYYY。",
+
+    "timezone": "Asia/Shanghai",
+    "dayStartHour": 0,
+    "_dayStartHour_note": "切日时间。0 = 零点切日(本部署的要求)。插件默认是 4(凌晨 4 点前算前一天)。",
+
+    "sharedDailyNote": true,
+    "_sharedDailyNote_note": "true = 不独占文件, 写进当天已有的每日笔记里的一节。",
+
+    "managedSection": true,
+    "_managedSection_note": "fork 扩展(提交 1b74f23)。在节内用不可见 HTML 注释边界隔离插件正文, 用户在同一节里手写的内容不会被计数、不会被撤回删掉。",
+
+    "sectionHeading": "日常记录",
+    "_sectionHeading_note": "不含 ##, 级别固定二级。设成「日常记录」= 写进 ## 日常记录, 不创建 ## 微信随手记。",
+
+    "attachmentFollowNote": true,
+    "attachmentMode": "obsidian",
+    "_attachment_note": "attachmentFollowNote 是服务端扩展: 附件放当天笔记同级目录下的 assets/, 例如 5.TDSQL/2026/08/assets/2026-08-31-2130-xxxx.jpg。它要求 attachmentMode=obsidian(服务启动时会自动纠正)。",
+    "attachmentFolder": "",
+    "attachmentSubFormat": "",
+
+    "templatePath": "",
+    "_templatePath_note": "共用模式下当天笔记不存在时套用的模板(vault 内 .md 路径)。留空 = 只建我们那一节。",
+
+    "saveVoiceAudio": true,
+    "_saveVoiceAudio_note": "语音消息同时保存原声 wav(约 3MB/分钟, 会被 ob 同步带走)。关掉只存转写文字。",
+
+    "reminderEnabled": false,
+    "reminderTime": "21:30",
+    "_reminder_note": "到点时今天还没记就在微信上提醒一次。服务端常驻, 默认关掉不打扰。",
+
+    "nudgeNightHour": 22,
+
+    "aiApiUrl": "",
+    "aiModel": "",
+    "_ai_note": "可选。当前版本不做 AI 润色(原文直存), 这两项留空即可。AI key 由 credentials.json 提供, 永不写在这里。"
+  },
+
+  "service": {
+    "logLevel": "info",
+    "_logLevel_note": "debug | info | warn | error。debug 也不会打印 token/密钥/消息正文(logger 做了结构性脱敏)。",
+
+    "verifyAfterWrite": true,
+    "_verifyAfterWrite_note": "写完 Daily Note 后重新从磁盘读一遍, 确认内容真在「## 日常记录」的 managed 正文里。校验不过就不回「记下来啦」, 而是回失败提示并保留事件流水待重放。",
+
+    "lockTimeoutMs": 15000,
+    "_lockTimeoutMs_note": "等文件锁的上限。ob 同步或 replay 命令可能正持有锁。超时则本次写入失败, 事件流水保留。",
+
+    "journalDir": ".wechat-diary/events",
+    "_journalDir_note": "相对 vault 的事件流水目录。放在 vault 里是刻意的: 跟着 ob 一起被同步与备份, 换机器也能重放。点开头, Obsidian 不索引。"
+  }
+}

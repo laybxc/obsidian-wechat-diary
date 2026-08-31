@@ -1,0 +1,16 @@
+# 绝不能进 Git 的东西
+config.json
+credentials.json
+state.json
+state.json.corrupt-*
+*.tmp
+*.tmp.*
+*.wechat-diary.lock
+
+# 运行产物
+logs/
+node_modules/
+*.log
+
+# 事件流水住在 vault 里, 不在这个仓库; 万一有人在这里跑测试留下的:
+.wechat-diary/

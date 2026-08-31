@@ -1,0 +1,20 @@
+{
+  "name": "wechat-diary-node",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WeChat Diary 独立 Node.js 服务: 复用插件 main.js 的协议/写入逻辑, 宿主换成本地文件系统",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node src/service.js",
+    "test": "node tests/run.js",
+    "test:upstream": "node ../tests/bindtest.js",
+    "bind": "node src/cli.js bind",
+    "status": "node src/cli.js status",
+    "doctor": "node src/cli.js doctor"
+  },
+  "dependencies": {},
+  "comment-dependencies": "零依赖: 仅用 Node 22 标准库(fs/promises, path, https, crypto, worker_threads)。moment 由 src/moment-lite.js 以纯标准库实现(只需 main.js 用到的日期令牌子集), 二维码复用 main.js 内嵌的 qrcode-generator, SILK 解码复用 main.js 内嵌的 silk-wasm。"
+}
