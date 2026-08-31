@@ -1490,6 +1490,16 @@ async function newPlugin(secrets, storedData) {
     eq("B21 节标题含「」: stripFirstPrefix 剥掉整个开页前缀", I.stripFirstPrefix(I.firstOfDayPrefixShared("2026-08-30", "随手记「工作」") + "记下来啦"), "记下来啦");
     eq("B21 普通节标题也剥", I.stripFirstPrefix(I.firstOfDayPrefixShared("2026-08-30", "微信随手记") + "记下来啦"), "记下来啦");
     eq("B21 独立模式开页前缀照旧剥", I.stripFirstPrefix(I.texts.FIRST_OF_DAY_PREFIX + "记下来啦"), "记下来啦");
+
+    // B22 fork: 在用户已有的「日常记录」节内用不可见边界隔离, 计数/撤回不碰手写内容
+    console.log("  — B22 已有节内安全嵌入");
+    const manual22 = "## 日常记录\n- 10:00 手写一\n- 11:00 手写二\n\n## 日报总结\n- 下午：\n";
+    h = mkW({ managedSection: true, sectionHeading: "日常记录" }, { [HP]: manual22 });
+    hr = await h.W.write("微信测试", false, HD);
+    check("B22 写入仍在 ## 日常记录 内, 不创建微信随手记标题", hr.n === 1 && h.v.files[HP].includes("<!-- wechat-diary:managed -->\n**10:30**\n\n微信测试\n") && !h.v.files[HP].includes("## 微信随手记"));
+    check("B22 原有手写内容与后续标题保留, countDay 只数微信记录", h.v.files[HP].includes("- 10:00 手写一\n- 11:00 手写二") && h.v.files[HP].includes("## 日报总结\n- 下午：") && (await h.W.countDay(HD)) === 1, h.v.files[HP]);
+    hu = await h.W.undoLastBlock(HD);
+    check("B22 撤回只删微信记录, 手写内容不动", hu.ok === true && hu.removed === "微信测试" && h.v.files[HP].includes("- 10:00 手写一\n- 11:00 手写二") && (await h.W.countDay(HD)) === 0, h.v.files[HP]);
   } finally {
     global.Date = RealDate; Math.random = realRandom; global.window.setTimeout = realWinSetTimeout; global.window.clearTimeout = realWinClearTimeout;
     I.setDayStartHour(4); I.setNudgeNightHour(22);

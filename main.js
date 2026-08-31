@@ -2384,6 +2384,7 @@ const DEFAULT_SETTINGS = {
   attachmentSubFormat: "",         // custom 模式下按日期分的子文件夹, moment 格式(如 YYYY/MM), 可空
   sharedDailyNote: false,          // 开: 不单独建文件, 写进当天每日笔记末尾的「## <sectionHeading>」一节, 插件只动这一节
   sectionHeading: "微信随手记",     // 节标题文字(不含 ##, 级别固定二级)
+  managedSection: false,           // fork 扩展: 在已有节内用不可见边界隔离插件正文
   templatePath: "",                // 共用模式下当天文件不存在时用的模板(vault 内 .md 路径; 空 = 只建我们那一节)
 };
 
@@ -3406,6 +3407,42 @@ function appendSection(content, heading, body) {
   return spliceSection(c, loc, body, heading);
 }
 
+// fork 扩展: 把插件正文安全嵌进已有节(例如「## 日常记录」)。HTML 注释在阅读视图不可见。
+const MANAGED_SECTION_MARKER = "<!-- wechat-diary:managed -->";
+
+function locateManagedBody(content, heading) {
+  const section = locateSection(content, heading);
+  if (!section) return null;
+  const source = content.slice(section.bodyStart, section.bodyEnd);
+  const re = /^<!-- wechat-diary:managed -->[ \t]*\r?$/gm;
+  let match = null;
+  for (const m of source.matchAll(re)) match = m;
+  if (!match) return null;
+  const markerEnd = section.bodyStart + match.index + match[0].length;
+  const bodyStart = content.charAt(markerEnd) === "\n" ? markerEnd + 1 : markerEnd;
+  return { bodyStart, bodyEnd: section.bodyEnd, section };
+}
+
+function appendManagedBody(content, heading, body) {
+  const section = locateSection(content, heading);
+  const owned = MANAGED_SECTION_MARKER + "\n" + trimBody(body);
+  if (!section) return appendSection(content, heading, owned);
+  let before = content.slice(0, section.bodyEnd).replace(/\s+$/, "");
+  const after = content.slice(section.bodyEnd);
+  if (before && !before.endsWith("\n")) before += "\n";
+  before += "\n" + owned;
+  if (after && !before.endsWith("\n\n")) before += "\n";
+  return before + after;
+}
+
+function spliceManagedBody(content, loc, newBody) {
+  const before = content.slice(0, loc.bodyStart);
+  const after = content.slice(loc.bodyEnd);
+  let out = before + trimBody(newBody);
+  if (after && !out.endsWith("\n\n")) out += "\n";
+  return out + after;
+}
+
 function normalizeNewlines(s) {
   return String(s).replace(/\r\n?/g, "\n");
 }
@@ -3510,6 +3547,7 @@ class DiaryWriter {
   _fmt() { return this.plugin.settings.pathFormat || DEFAULT_SETTINGS.pathFormat; }
   _join(root, rel) { return normalizePath(root ? root + "/" + rel : rel); }
   _shared() { return !!this.plugin.settings.sharedDailyNote; }
+  _managed() { return this._shared() && !!this.plugin.settings.managedSection; }
   _heading() { return String(this.plugin.settings.sectionHeading || DEFAULT_SETTINGS.sectionHeading).trim() || DEFAULT_SETTINGS.sectionHeading; }
 
   diaryPath(dateStr) {
@@ -3697,20 +3735,20 @@ class DiaryWriter {
     if (!create) {
       // 撤回/封存: 先看有没有节, 没有就不碰文件(免得空操作也改 mtime 惊动同步盘)
       const cur = await vault.cachedRead(file);
-      if (!locateSection(cur, heading)) return null;
+      if (!(this._managed() ? locateManagedBody(cur, heading) : locateSection(cur, heading))) return null;
     }
     let out = null;
     await vault.process(file, (content) => {
-      const loc = locateSection(content, heading);
+      const loc = this._managed() ? locateManagedBody(content, heading) : locateSection(content, heading);
       if (!loc) {
         const body = trimBody(fn(""));
         out = body;
-        return body ? appendSection(content, heading, body) : content;
+        return body ? (this._managed() ? appendManagedBody(content, heading, body) : appendSection(content, heading, body)) : content;
       }
       const body = trimBody(normalizeNewlines(content.slice(loc.bodyStart, loc.bodyEnd)));
       const nb = trimBody(fn(body));
       out = nb;
-      return nb === body ? content : spliceSection(content, loc, nb, heading);
+      return nb === body ? content : (this._managed() ? spliceManagedBody(content, loc, nb) : spliceSection(content, loc, nb, heading));
     });
     return out;
   }
@@ -3740,8 +3778,10 @@ class DiaryWriter {
     }
     let content = tpl ? renderTemplate(tpl, { dateStr: day, now: new Date(), title: path.split("/").pop().replace(/\.md$/, ""), momentLib: moment }) : "";
     if (body) {
-      const loc = locateSection(content, heading);
-      content = loc ? spliceSection(content, loc, body, heading) : appendSection(content, heading, body);
+      const loc = this._managed() ? locateManagedBody(content, heading) : locateSection(content, heading);
+      content = loc
+        ? (this._managed() ? spliceManagedBody(content, loc, body) : spliceSection(content, loc, body, heading))
+        : (this._managed() ? appendManagedBody(content, heading, body) : appendSection(content, heading, body));
     }
     await this._ensureParents(path);
     await vault.create(path, content);
@@ -3780,7 +3820,7 @@ class DiaryWriter {
     const file = vault.getFileByPath(this.diaryPath(pc.day));
     if (!file) return;
     const cur = await vault.cachedRead(file);
-    const loc = locateSection(cur, this._heading());
+    const loc = this._managed() ? locateManagedBody(cur, this._heading()) : locateSection(cur, this._heading());
     const body = loc ? normalizeNewlines(cur.slice(loc.bodyStart, loc.bodyEnd)) : "";
     let items = pc.items;
     if (pc.dropLast && items.length) items = items.slice(0, -1);
@@ -3870,7 +3910,7 @@ class DiaryWriter {
       if (!file) return 0;
       const content = await vault.cachedRead(file);
       if (this._shared()) {
-        const loc = locateSection(content, this._heading());
+        const loc = this._managed() ? locateManagedBody(content, this._heading()) : locateSection(content, this._heading());
         return loc ? countMessages(normalizeNewlines(content.slice(loc.bodyStart, loc.bodyEnd))) : 0;
       }
       return this._count(content); // 外来文件(#15 B1)只数我们段头之后的块
@@ -6152,6 +6192,7 @@ WechatDiaryPlugin.__internals = {
   reminderDue, reminderText, sniffAudioExt, md5Hex, pcmToWav, silkToWav, getSilkLib,
   // #15 路径层与共用文件模式
   renderPath, validatePathFormat, normalizeHeading, escapeRegExp, locateSection, spliceSection, appendSection,
+  locateManagedBody, appendManagedBody, spliceManagedBody, MANAGED_SECTION_MARKER,
   normalizeNewlines, trimBody, escapeHeadingLines, escapeFenceLines, renderTemplate, isForeignFile, removeLastBlock, sealContent,
   firstOfDayPrefixShared, stripFirstPrefix, expiredNoticeShared, welcomeTextShared, helpText, UNDO_FOREIGN_REPLY,
   DEFAULT_SETTINGS,
