@@ -26,6 +26,7 @@ function run(label, file) {
   const results = [];
   results.push(await run("上游插件测试 (tests/bindtest.js) —— 字节契约与协议纯函数", UPSTREAM));
   results.push(await run("standalone 集成测试 —— 宿主适配层/流水/并发/信号", STANDALONE));
+  results.push(await run("append-only 格式与手写保护测试", path.join(__dirname, "append-only.test.js")));
 
   console.log("\n" + "═".repeat(60));
   console.log("  汇总");

@@ -51,6 +51,7 @@ const DEFAULT_CONFIG = {
     aiModel: "",
   },
   service: {
+    appendOnly: false,           // Opt-in compact lists; disables undo and sealing.
     // 崩溃重启由 run.sh 负责; 这里只控制服务内部行为
     logLevel: "info",             // debug | info | warn | error
     // 写完 Daily Note 后重新读一遍确认消息真的在里面(第六章要求)

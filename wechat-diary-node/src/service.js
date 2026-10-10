@@ -27,6 +27,7 @@ const { StateStore } = require("./state-store");
 const { EventJournal, EV, receivedEvent } = require("./event-journal");
 const { bootPlugin } = require("./plugin-host");
 const { DiaryWriterAdapter } = require("./diary-writer");
+const { enableAppendOnly } = require("./append-only");
 const { mediaSummary, classifyMessage } = require("./media");
 
 const LONG_POLL_TIMEOUT_MS = 35000;
@@ -92,10 +93,12 @@ class WeChatDiaryService {
     this.I = boot.internals;
     this.credAccessor = boot.credentials;
 
+    this.journal = new EventJournal(this.config.vaultPath, this.config.service.journalDir);
+    if (this.config.service.appendOnly) enableAppendOnly(this.plugin, this.I, this.journal);
     this.writer = new DiaryWriterAdapter(this.plugin, this.I, {
       verifyAfterWrite: this.config.service.verifyAfterWrite,
+      appendOnly: !!this.config.service.appendOnly,
     });
-    this.journal = new EventJournal(this.config.vaultPath, this.config.service.journalDir);
 
     // 时区/切日: main.js 的模块级状态, onload 已按 settings 设过, 这里复述一次便于日志核对
     logger.info("时区 " + this.config.settings.timezone + ", 切日 " + this.config.settings.dayStartHour + ":00, 逻辑日 " + this.I.logicalTodayStr());
@@ -302,6 +305,7 @@ class WeChatDiaryService {
     let failReason = "";
     try {
       reply = await this.plugin.agent.onMessage(from, text, isVoice, images, { voices, files, videos, voiceAudio });
+      if (this.config.service.appendOnly && this.plugin.writer.appendOnlyError) throw this.plugin.writer.appendOnlyError;
       // 文本类记录做写后校验: 意图是命令(撤回/封存/探活/帮助)时没有新内容可校验, 跳过
       if (hasText || hasVoice) {
         const det = this.I.detectIntent(text);
@@ -402,7 +406,7 @@ class WeChatDiaryService {
       }
       const isVoice = ev.msgType === "voice";
       const needle = this.writer._needleFor(ev.text, isVoice);
-      if (needle && await this.writer.verifyContains(logicalDate, needle)) {
+      if (!this.config.service.appendOnly && needle && await this.writer.verifyContains(logicalDate, needle)) {
         // 已经在里面了: 上次其实写成了, 只是 written 事件没落盘(在 5 和 written 之间崩溃)
         await this.journal.append({
           type: EV.SKIPPED, eventId: ev.eventId, seqKey: ev.seqKey, botId: ev.botId,
@@ -413,6 +417,14 @@ class WeChatDiaryService {
         continue;
       }
       try {
+        const replayIntent = this.I.detectIntent(ev.text);
+        if (this.config.service.appendOnly && replayIntent.intent !== this.I.INTENT.DIARY &&
+            !(replayIntent.intent === this.I.INTENT.START_DIARY && replayIntent.suspect)) {
+          await this.journal.append({ type: EV.SKIPPED, eventId: ev.eventId, logicalDate,
+            reason: "Append-only replay does not execute commands" });
+          skipped += 1;
+          continue;
+        }
         // 直接走 writer.writeText 而不是 agent: 重放不该再触发意图识别 ——
         // 一条"撤回"被重放两次会删掉两条记录。流水里的 text 是【已被判定为记录】的内容才走到这里,
         // 命令类消息不产生 Daily Note 变更, 因此不会出现在 pending 里(它们的 written 事件正常落盘)。

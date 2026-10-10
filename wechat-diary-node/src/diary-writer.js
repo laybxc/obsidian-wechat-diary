@@ -13,6 +13,7 @@
 // 另外提供 verifyContains(): 给 replay 用的"这条是不是已经在里面了"判断, 避免重复写入。
 
 const logger = require("./logger");
+const { compactBody } = require("./append-only");
 
 class DiaryWriterAdapter {
   // plugin: main.js 的 WechatDiaryPlugin 实例(已 onload)
@@ -22,6 +23,7 @@ class DiaryWriterAdapter {
     this.writer = plugin.writer;
     this.I = internals;
     this.verifyAfterWrite = !(opts && opts.verifyAfterWrite === false);
+    this.appendOnly = !!(opts && opts.appendOnly);
   }
 
   // 当天笔记的 vault 相对路径
@@ -29,8 +31,8 @@ class DiaryWriterAdapter {
 
   logicalToday() { return this.I.logicalTodayStr(); }
 
-  // 读出 managed 正文(即"插件那部分"), 文件/节不存在返回 null。
-  // 这是所有校验的基准: 用户手写的部分不在里面, 所以校验永远不会把手写内容误当成微信记录。
+  // Legacy mode reads the marked body; append-only mode reads the whole section.
+  // Append-only replay never uses this content to identify completed events.
   async readManagedBody(logicalDate) {
     const path = this.diaryPath(logicalDate);
     const file = this.plugin.app.vault.getFileByPath(path);
@@ -91,6 +93,7 @@ class DiaryWriterAdapter {
     let s = String(text || "").trim();
     if (!s) return "";
     s = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(NORMALIZE_BLANK_RE, "\n").trim();
+    if (this.appendOnly) return compactBody(this.I.escapeFenceLines(this.I.escapeHeadingLines(s)));
     if (isVoice) s = "🎤 " + s;
     else if (s.startsWith("# ") || s.startsWith("---") || s.startsWith("_(")) s = "\\" + s;
     // 共用模式还会对块内的 #/``` 行加转义(escapeHeadingLines/escapeFenceLines)
